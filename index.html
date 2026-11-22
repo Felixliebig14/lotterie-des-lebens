@@ -389,6 +389,39 @@ body.dl-locked{overflow:hidden}
 @keyframes dl-twist-v3{0%{transform:rotate(0)}54%{transform:rotate(90deg)}100%{transform:rotate(0)}}
 @keyframes dl-ball-v3{0%{opacity:0;transform:translateX(-50%) translateY(-6px)}8%{opacity:1}100%{opacity:1;transform:translateX(-50%) translateY(calc(var(--dl-ball-size)*1.08))}}
 @keyframes dl-paper-v3{0%{opacity:0;transform:translate(-18px,24px) rotate(-8deg) scaleX(.83) scaleY(.13)}100%{opacity:1;transform:translate(12px,0) rotate(-4deg) scale(1)}}
+
+/* Feinschliff: ausschließlich Übergänge und Interaktionsrückmeldungen. */
+#cmp .card{transition:opacity .3s ease,transform .35s cubic-bezier(.2,.7,.2,1)}
+#cmp.cmp-changing .card{opacity:0;transform:translateY(7px)}
+#cmp .card.cmp-enter{animation:dl-cmp-enter .42s cubic-bezier(.2,.7,.2,1) both}
+@keyframes dl-cmp-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+/* Balken starten erst beim Eintritt in den sichtbaren Bereich. */
+.stat .tr i{animation:none;transform:scaleX(0);transition:transform 1.15s cubic-bezier(.2,.7,.2,1)}
+.stat.stat-bars-visible .tr i{transform:scaleX(1)}
+.stat.stat-bars-visible .row:nth-child(2) .tr i{transition-delay:.09s}
+.stat.stat-bars-visible .row:nth-child(3) .tr i{transition-delay:.17s}
+.stat.stat-bars-visible .row:nth-child(4) .tr i{transition-delay:.25s}
+/* Dezentes Feedback ohne Bewegung oder Größenänderung. */
+nav button,.btn,.fil button,.arch button,.fb button,.dl-skip,.dl-start,.dl-replay{
+ transition:background-color .2s ease,color .2s ease,border-color .2s ease,opacity .2s ease;
+ -webkit-tap-highlight-color:transparent;
+}
+@media(hover:hover){
+ .arch button:not(.cur):hover{background:rgba(255,255,255,.78)}
+ .fil button:not(.on):hover{background:rgba(16,16,16,.055)}
+}
+button:active:not(:disabled){opacity:.72}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+/* Das fertige Ticket wird wie ein Papierstreifen ruhig sichtbar. Keine Skalierung. */
+#stage .ticket.dl-ticket-unfold{animation:dl-ticket-unfold .7s cubic-bezier(.2,.72,.22,1) both}
+@keyframes dl-ticket-unfold{
+ from{opacity:0;clip-path:inset(0 0 82% 0);transform:translateY(8px)}
+ to{opacity:1;clip-path:inset(0 0 0 0);transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+ #cmp .card,#cmp .card.cmp-enter,#stage .ticket.dl-ticket-unfold{animation:none!important;transition:none!important;opacity:1!important;transform:none!important;clip-path:none!important}
+ .stat .tr i{transition:none!important;transform:scaleX(1)!important}
+}
 </style></head><body>
 <div id="dl-reveal" class="dl-reveal" role="dialog" aria-modal="true" aria-labelledby="dl-title" hidden>
   <div class="dl-reveal-inner">
@@ -539,12 +572,31 @@ function arch(){
 }
 function load(id,scroll){if(!by[id])return;cur=by[id];cmpId=cur.partner;show();if(scroll)go('los')}
 const go=id=>document.getElementById(id).scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
+let comparisonTimer=0;
+function changeComparison(id){
+ const cmp=$('#cmp');
+ clearTimeout(comparisonTimer);
+ const reduced=matchMedia('(prefers-reduced-motion:reduce)').matches;
+ const render=()=>{
+  cmp.classList.remove('cmp-changing');
+  cmp.innerHTML=card(cur,'DEIN LOS')+card(by[id],'ANDERES LOS');
+  if(!reduced){
+   cmp.querySelectorAll('.card').forEach(el=>{
+    el.classList.add('cmp-enter');
+    el.addEventListener('animationend',()=>el.classList.remove('cmp-enter'),{once:true});
+   });
+  }
+ };
+ if(reduced){render();return;}
+ cmp.classList.add('cmp-changing');
+ comparisonTimer=setTimeout(render,170);
+}
 document.addEventListener('click',e=>{
  const g=e.target.closest('[data-go]');if(g){e.preventDefault();go(g.dataset.go);return}
- const a=e.target.closest('#arch [data-id]');if(a){cmpId=a.dataset.id;if(cmpId===cur.id){go('los');return}$('#sel').value=cmpId;$('#cmp').innerHTML=card(cur,'DEIN LOS')+card(by[cmpId],'ANDERES LOS');go('vergleich');return}
+ const a=e.target.closest('#arch [data-id]');if(a){cmpId=a.dataset.id;if(cmpId===cur.id){go('los');return}$('#sel').value=cmpId;changeComparison(cmpId);go('vergleich');return}
  const f=e.target.closest('#fil [data-t]');if(f){topic=f.dataset.t;arch()}
 });
-$('#sel').onchange=e=>{cmpId=e.target.value;$('#cmp').innerHTML=card(cur,'DEIN LOS')+card(by[cmpId],'ANDERES LOS')};
+$('#sel').onchange=e=>{cmpId=e.target.value;changeComparison(cmpId)};
 $('#q').oninput=e=>{query=e.target.value;arch()};
 $('#swap').onclick=()=>{$('#stamp').classList.add('on');$('#after').hidden=false};
 $$('.dots').forEach(d=>d.innerHTML=Array.from({length:100},(_,i)=>`<i class="${i<d.dataset.n?'f':''}"></i>`).join(''));
@@ -552,6 +604,18 @@ const fromHash=()=>{const h=location.hash.slice(1),q=new URLSearchParams(locatio
 addEventListener('hashchange',()=>{fromHash();show();go('los')});
 fromHash();show();
 if('IntersectionObserver'in window){const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('on');io.unobserve(e.target)}}),{threshold:.08});window.__dlObserveRv=els=>[...els].forEach(e=>io.observe(e));window.__dlObserveRv($$('.rv'));}else {window.__dlObserveRv=els=>[...els].forEach(e=>e.classList.add('on'));window.__dlObserveRv($$('.rv'));}
+/* Balken erst animieren, wenn die Statistik sichtbar ist. */
+if('IntersectionObserver'in window){
+ const barObserver=new IntersectionObserver(entries=>{
+  entries.forEach(entry=>{
+   if(entry.isIntersecting){
+    entry.target.classList.add('stat-bars-visible');
+    barObserver.unobserve(entry.target);
+   }
+  });
+ },{threshold:.18,rootMargin:'0px 0px -5% 0px'});
+ $$('.stat').forEach(stat=>barObserver.observe(stat));
+}else{$$('.stat').forEach(stat=>stat.classList.add('stat-bars-visible'));}
 const secs=['los','vergleich','zahlen','umtausch','archiv','projekt'];
 addEventListener('scroll',()=>{let c='los';secs.forEach(s=>{if(document.getElementById(s).getBoundingClientRect().top<innerHeight*.4)c=s});$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===(c==='archiv'?'umtausch':c)))},{passive:true});
 
@@ -576,7 +640,7 @@ function finishReveal(){
   revealEl.classList.add('is-done');
   document.body.classList.remove('dl-locked');
   try{sessionStorage.setItem('dein-leben-enthüllt-'+cur.id,'1')}catch(e){}
-  revealCloseTimer=setTimeout(()=>{revealEl.hidden=true;revealEl.classList.remove('is-done','is-playing');revealStart.disabled=false;revealMachine.disabled=false;const t=document.querySelector('#stage .ticket');if(t){t.style.animation='none';t.offsetHeight;t.style.animation='';}document.querySelector('#los')?.scrollIntoView({behavior:'instant'});},matchMedia('(prefers-reduced-motion:reduce)').matches?0:540);
+  revealCloseTimer=setTimeout(()=>{revealEl.hidden=true;revealEl.classList.remove('is-done','is-playing');revealStart.disabled=false;revealMachine.disabled=false;const t=document.querySelector('#stage .ticket');if(t){t.style.animation='none';t.offsetHeight;t.style.animation='';if(!matchMedia('(prefers-reduced-motion:reduce)').matches){t.classList.add('dl-ticket-unfold');t.addEventListener('animationend',()=>t.classList.remove('dl-ticket-unfold'),{once:true});}}document.querySelector('#los')?.scrollIntoView({behavior:'instant'});},matchMedia('(prefers-reduced-motion:reduce)').matches?0:540);
 }
 function playReveal(){
   if(!revealActive||revealEl.classList.contains('is-playing'))return;
